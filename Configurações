@@ -1,0 +1,124 @@
+#Neste repositório irei explicar como montar um servidor de internet no Ubuntu 18.
+#Os requisitos para este processo serão duas placas de rede, uma que estará na rede que contém o link de internet, e a outra na rede da qual a internet será compartilhada.
+#Estarei utilizando o editor de arquivos VIM, para baixar utilize o comando "sudo apt-get install vim"
+#Também é importante possuir o pacote net-tools instalado, para utilize "sudo apt-get install net-tools"
+
+##O primeiro passo a ser feito será configurar o arquivo /etc/network/interfaces 
+
+sudo vim /etc/network/interfaces
+
+#Dentro do arquivo edite da seguinte forma
+------------------------------------------------------------------------------------------------------------
+auto lo
+iface lo inet loopback
+
+iface enp0s3 inet static
+  address 192.168.1.1
+  netmask 255.255.255.0
+  network 192.168.1.0
+  broadcast 192.168.1.255
+
+iface enp0s8 inet dhcp
+------------------------------------------------------------------------------------------------------------
+#A interface de rede do servidor voltada para a rede interna (enp0s3) deve receber um endereço IP estático.
+
+
+#Para ativar o roteamento no servidor deve-se executar o comando no terminal
+
+echo 1 > /proc/sys/net/ipv4/ip_forward
+
+##O segundo passo é a configuração do NAT no servidor
+
+#O NAT no Ubuntu se configura com iptables, coloque os comandos a seguir no terminal
+
+modprobe iptable_nat
+iptables -t nat -A POSTROUTING -s 192.168.1.0/24 -o eth1 -j MASQUERADE
+
+#Esses comando são perdidos ao reiniciar o sistema.
+#Após isso é interesante fazer com que os comandos sejam ativados no boot do sistema.
+
+#É necessário inserir alguns comandos no arquivo /etc/rc.local
+
+sudo vim /etc/rc.local 
+
+#Dentro do arquivo edite da seguinte forma
+------------------------------------------------------------------------------------------------------------
+#!/bin/sh 
+# rc.local
+
+modprobe iptable_nat
+echo 1 > /proc/sys/net/ipv4/ip_forward
+iptables -t nat -A POSTROUTING -s 192.168.1.0/24 -o eth1 -j MASQUERADE
+------------------------------------------------------------------------------------------------------------
+
+##No terceiro passo ja começamos a configurar o DHCP
+
+#Para baixar o pacote do DHCP rode o seguinte comando no terminal
+
+sudo apt install isc-dhcp-server
+
+#Feito isso vamos fazer um bkp do arquivo original do DHCP e criar um novo do zero
+
+mv /etc/dhcpd.conf /etc/dhcpd.conf.bkp
+touch dhcpd.conf
+
+#Agora vamos modificar o arquivo
+
+sudo vim /etc/dhcpd.conf
+
+------------------------------------------------------------------------------------------------------------
+
+ddns-update-style none;
+
+default-lease-time 600;
+max-lease-time 7200;
+
+authoritative;
+
+subnet 192.168.1.0 netmask 255.255.255.0 {
+   range 192.168.1.100 192.168.1.150;
+   option broadcast-address 192.168.1.255;
+   option routers 192.168.1.1;
+   option domain-name-servers 8.8.8.8 8.8.4.4;
+}
+
+------------------------------------------------------------------------------------------------------------
+
+#lease-time controla o tempo de renovação cada 10 minutos (600 segundos);
+#max-lease-time controla o tempo máximo que uma estação pode usar o endereço IP. Usado quando existe mais clientes que endereços IP disponíveis para aluguel;
+#range indica a faixa de IP que será usada;
+#routers indica o endereço do roteador padrão, o prório linux no caso;
+#domain-name-servers indica os servidores DNS que serão usados pelas estações.
+
+#Agora devemos indicar a interface que será servida pelo serviço DHCP
+
+#Deve ser indicada editando o arquivo isc-dhcp-server
+
+sudo vim /etc/default/isc-dhcp-server
+
+------------------------------------------------------------------------------------------------------------
+
+INTERFACES="enp0s3"
+
+------------------------------------------------------------------------------------------------------------
+
+## ADMINISTRANDO O DHCP ##
+
+#Para desabilitar o serviço do DHCP
+
+service isc-dhcp-server stop
+
+#Para habilitar o serviço do DHCP
+
+service isc-dhcp-server start
+
+#Para reiniciar o serviço do DHCP
+
+service isc-dhcp-server restart
+
+#Para verificar os status do DHCP
+
+service isc-dhcp-server status
+
+###### Agora seu servidor de internet e DHCP estão funcionando #####
+
